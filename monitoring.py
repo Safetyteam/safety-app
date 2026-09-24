@@ -3,7 +3,7 @@ import pandas as pd
 from google import genai
 
 st.set_page_config(page_title="Safety Pattern Finder", layout="wide")
-st.title("Safety Data — Qonuniyatlar va qoidalarni aniqlash ilovasi")
+st.title("Vehicle Inspection & Address Generator")
 
 # Yon paneldan Gemini API kalitini kiritish
 api_key = st.sidebar.text_input("Gemini API kalitini kiriting:", type="password")
