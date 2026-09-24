@@ -18,15 +18,23 @@ tab1, tab2 = st.tabs(["🗺️ Inspection Atlas & Interactive Maps", "📊 Data 
 # ----------------- 1-BO'LIM: INTERACTIVE HTML ATLAS -----------------
 with tab1:
     st.subheader("Inspection Atlas — Weigh Station, Corridors & Driver Reports")
-    
+
     html_file_path = "Inspection_Atlas_Driver_Reports final 2.html"
-    
+
     if os.path.exists(html_file_path):
         with open(html_file_path, "r", encoding="utf-8") as f:
-            html_content = f.read()
-        components.html(html_content, height=1050, scrolling=True)
+            html_data = f.read()
+
+        st.download_button(
+            label="📥 Atlasni to'liq ekranda / alohida ochish (HTML yuklab olish)",
+            data=html_data,
+            file_name="Inspection_Atlas_Full.html",
+            mime="text/html"
+        )
+        st.info("💡 Xarita va ma'lumotlar hajmi katta bo'lgani uchun pastdagi oyna yengillashtirilgan rejimda ishlaydi.")
+        components.html(html_data, height=900, scrolling=True)
     else:
-        st.warning(f"⚠️ `{html_file_path}` fayli topilmadi. Faylni to'g'ri nom bilan yuklaganingizga ishonch hosil qiling.")
+        st.warning(f"⚠️ `{html_file_path}` fayli topilmadi.")
 
 # ----------------- 2-BO'LIM: DATA ANALYZER & GEMINI -----------------
 with tab2:
