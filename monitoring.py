@@ -89,4 +89,4 @@ with tab2:
             else:
                 st.warning("Iltimos, kamida 2 ta ustunni tanlang.")
         else:
-            st.error("Varaq bo'sh yoki ma'lumotlarni o'qib bo'lmadi.").")
+            st.error("Varaq bo'sh yoki ma'lumotlarni o'qib bo'lmadi.")
