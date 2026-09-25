@@ -49,17 +49,18 @@ with tab1:
         st.warning(f"⚠️ `{html_file_path}` fayli topilmadi.")
 
 # ----------------- 2-BO'LIM: USA WEIGH STATIONS MAP -----------------
+# ----------------- 2-BO'LIM: USA WEIGH STATIONS MAP -----------------
 with tab2:
     st.subheader("⚖️ USA Weigh Stations — Interaktiv Xarita")
-    st.write("AQSH bo'yicha Weigh Station ma'lumotlari (CSV, Excel yoki Parquet) faylini yuklang. Ma'lumotlar brauzeringizda saqlanib qoladi.")
+    st.write("Weigh Station yoki ko'riklar faylini yuklang. Agar koordinata bo'lmasa, dastur shahar/stansiya nomidan koordinatalarni avtomatik aniqlaydi.")
 
     supported_types = ["csv", "tsv", "xlsx", "xls", "parquet", "json"]
-    ws_file = st.file_uploader("Weigh Stations bazasini yuklang:", type=supported_types, key="ws_uploader")
+    ws_file = st.file_uploader("Faylni yuklang (CSV, Excel):", type=supported_types, key="ws_uploader")
 
     if ws_file:
         file_name = ws_file.name.lower()
         try:
-            with st.spinner("Stansiyalar o'qilmoqda..."):
+            with st.spinner("Ma'lumotlar o'qilmoqda..."):
                 if file_name.endswith('.csv'):
                     st.session_state["ws_data"] = pd.read_csv(ws_file, low_memory=False)
                 elif file_name.endswith('.tsv'):
@@ -72,73 +73,112 @@ with tab2:
                     xls = pd.ExcelFile(ws_file)
                     selected_sheet = st.selectbox("Varaqni tanlang:", xls.sheet_names, key="ws_sheet")
                     st.session_state["ws_data"] = pd.read_excel(ws_file, sheet_name=selected_sheet)
-            st.success(f"Ma'lumotlar muvaffaqiyatli saqlandi! ({len(st.session_state['ws_data']):,} ta yozuv)")
+            st.success(f"Ma'lumotlar muvaffaqiyatli yuklandi! ({len(st.session_state['ws_data']):,} ta yozuv)")
         except Exception as e:
             st.error(f"Faylni yuklashda xatolik: {e}")
 
-    # Agar ma'lumot yuklangan bo'lsa xaritani ko'rsatish
-    ws_df = st.session_state["ws_data"]
+    ws_df = st.session_state.get("ws_data")
     if ws_df is not None and not ws_df.empty:
         cols = ws_df.columns.tolist()
 
-        # Koordinata ustunlarini avtomatik topish
-        lat_candidates = [c for c in cols if any(k in str(c).lower() for k in ['lat', 'latitude', 'y_coord', 'latitude_deg'])]
-        lon_candidates = [c for c in cols if any(k in str(c).lower() for k in ['lon', 'lng', 'longitude', 'x_coord', 'longitude_deg'])]
-
-        c1, c2, c3 = st.columns(3)
+        # 1. Koordinata ustunlarini qidirish
+        lat_candidates = [c for c in cols if any(k in str(c).lower() for k in ['lat', 'latitude', 'y_coord'])]
+        lon_candidates = [c for c in cols if any(k in str(c).lower() for k in ['lon', 'lng', 'longitude', 'x_coord'])]
+        
+        # 2. Joylashuv nomi ustunini topish (LOCATION_DESC, LOCATION, CITY, STATION)
+        desc_candidates = [c for c in cols if any(k in str(c).lower() for k in ['desc', 'location', 'station', 'city', 'site', 'name'])]
+        
+        c1, c2 = st.columns(2)
         with c1:
-            lat_col = st.selectbox("Latitude (Kenglik) ustuni:", options=cols, index=cols.index(lat_candidates[0]) if lat_candidates else 0)
+            name_col = st.selectbox("Stansiya / Joylashuv ustuni:", options=cols, index=cols.index(desc_candidates[0]) if desc_candidates else 0)
         with c2:
-            lon_col = st.selectbox("Longitude (Uzunlik) ustuni:", options=cols, index=cols.index(lon_candidates[0]) if lon_candidates else (1 if len(cols) > 1 else 0))
-        with c3:
-            name_candidates = [c for c in cols if any(k in str(c).lower() for k in ['name', 'station', 'location', 'site', 'facility'])]
-            name_col = st.selectbox("Stansiya nomi / Tavsif ustuni:", options=cols, index=cols.index(name_candidates[0]) if name_candidates else 0)
+            count_candidates = [c for c in cols if any(k in str(c).lower() for k in ['soni', 'count', 'total', 'takrorlanish'])]
+            count_col = st.selectbox("Ko'riklar soni ustuni (ixtiyoriy):", options=["Yo'q"] + cols, index=cols.index(count_candidates[0])+1 if count_candidates else 0)
 
-        # Shtat bo'yicha tezkor filtr
-        state_candidates = [c for c in cols if any(k in str(c).lower() for k in ['state', 'st', 'jurisdiction'])]
-        filtered_ws = ws_df.copy()
-        if state_candidates:
-            st_col = state_candidates[0]
-            unique_states = ["Barchasi"] + sorted(ws_df[st_col].dropna().astype(str).unique().tolist())
-            selected_st = st.selectbox("Shtat bo'yicha saralash:", unique_states)
-            if selected_st != "Barchasi":
-                filtered_ws = filtered_ws[filtered_ws[st_col].astype(str) == selected_st]
+        # AQSH shtatlari va mashhur Weigh Station/shaharlari rasmiy koordinatalar lug'ati
+        KNOWN_LOCATIONS = {
+            "MAYVIEW MO": (39.0142, -93.8341),
+            "JOPLIN MO": (37.0842, -94.5133),
+            "CHARLESTON MO": (36.9206, -89.3331),
+            "STEELE MO": (36.0859, -89.8315),
+            "WILLOW SPRINGS MO": (36.9926, -91.9668),
+            "ST CLAIR MO": (38.3456, -90.9818),
+            "EAGLEVILLE MO": (40.5486, -93.9855),
+            "FORISTELL MO": (38.8239, -90.9579),
+            "ST GENEVIEVE MO": (37.9781, -90.0468),
+            "STE GENEVIEVE MO": (37.9781, -90.0468),
+            "WENTZVILLE MO": (38.8106, -90.8529),
+            "NEOSHO MO": (36.8687, -94.3683),
+            "GRANBY MO": (36.9184, -94.2547),
+            "BOONVILLE MO": (38.9736, -92.7432),
+            "HARRISONVILLE MO": (38.6533, -94.3488),
+            "PLATTSBURG MO": (39.5636, -94.4608),
+            "BLOOMFIELD MO": (36.8856, -89.9284),
+            "CAMERON MO": (39.7408, -94.2377),
+        }
 
-        # Sonli koordinatalarga aylantirish va bo'shlarini tozalash
-        filtered_ws[lat_col] = pd.to_numeric(filtered_ws[lat_col], errors='coerce')
-        filtered_ws[lon_col] = pd.to_numeric(filtered_ws[lon_col], errors='coerce')
-        valid_map_data = filtered_ws.dropna(subset=[lat_col, lon_col])
+        # Agar asl jadvalda koordinata bo'lmasa, uni nom bo'yicha to'ldirish
+        df_mapped = ws_df.copy()
+        
+        has_real_coords = bool(lat_candidates and lon_candidates)
+        if has_real_coords:
+            lat_col = lat_candidates[0]
+            lon_col = lon_candidates[0]
+            df_mapped['lat_val'] = pd.to_numeric(df_mapped[lat_col], errors='coerce')
+            df_mapped['lon_val'] = pd.to_numeric(df_mapped[lon_col], errors='coerce')
+        else:
+            df_mapped['lat_val'] = None
+            df_mapped['lon_val'] = None
 
-        st.caption(f"Xaritada aks ettirilayotgan stansiyalar soni: **{len(valid_map_data):,}** ta")
+        # Rasmiy geolokatsiya orqali koordinatalarni ulash
+        for idx, row in df_mapped.iterrows():
+            if pd.isna(row['lat_val']) or pd.isna(row['lon_val']):
+                loc_text = str(row[name_col]).strip().upper()
+                # To'liq mos kelishini tekshirish
+                if loc_text in KNOWN_LOCATIONS:
+                    df_mapped.at[idx, 'lat_val'] = KNOWN_LOCATIONS[loc_text][0]
+                    df_mapped.at[idx, 'lon_val'] = KNOWN_LOCATIONS[loc_text][1]
+                else:
+                    # Qisman moslik (masalan "MAYVIEW" so'zi qatnashgan bo'lsa)
+                    for k, coords in KNOWN_LOCATIONS.items():
+                        if k.split()[0] in loc_text:
+                            df_mapped.at[idx, 'lat_val'] = coords[0]
+                            df_mapped.at[idx, 'lon_val'] = coords[1]
+                            break
 
-        if not valid_map_data.empty:
-            # USA markazida xarita yaratish
-            m = folium.Map(location=[39.8283, -98.5795], zoom_start=4, tiles="OpenStreetMap")
+        valid_points = df_mapped.dropna(subset=['lat_val', 'lon_val'])
+        st.info(f"📍 Xaritada aks ettirilayotgan stansiyalar soni: **{len(valid_points)}** / {len(ws_df)} ta")
+
+        if not valid_points.empty:
+            # Xarita markazini o'rtacha nuqtaga moslash
+            avg_lat = valid_points['lat_val'].mean()
+            avg_lon = valid_points['lon_val'].mean()
+            
+            m = folium.Map(location=[avg_lat, avg_lon], zoom_start=6, tiles="OpenStreetMap")
             marker_cluster = MarkerCluster().add_to(m)
 
-            # Tezlik uchun ko'pi bilan 3000 ta nuqtani klasterga berish
-            plot_limit = min(len(valid_map_data), 3000)
-            sample_points = valid_map_data.head(plot_limit)
+            for _, r in valid_points.iterrows():
+                lat = r['lat_val']
+                lon = r['lon_val']
+                title = f"{r[name_col]}"
+                if 'LOCATION' in r:
+                    title = f"[{r['LOCATION']}] - {title}"
+                
+                count_info = f"<br>Ko'riklar soni: <b>{r[count_col]:,}</b>" if count_col != "Yo'q" else ""
 
-            for _, row in sample_points.iterrows():
-                lat = row[lat_col]
-                lon = row[lon_col]
-                station_label = str(row[name_col])
                 folium.Marker(
                     location=[lat, lon],
-                    popup=folium.Popup(f"<b>{station_label}</b><br>Lat: {lat}<br>Lon: {lon}", max_width=250),
-                    tooltip=station_label,
-                    icon=folium.Icon(color="darkblue", icon="scale", prefix="fa")
+                    popup=folium.Popup(f"<b>Weigh Station:</b> {title}{count_info}<br>Lat: {lat:.4f}, Lon: {lon:.4f}", max_width=300),
+                    tooltip=title,
+                    icon=folium.Icon(color="red", icon="truck", prefix="fa")
                 ).add_to(marker_cluster)
 
-            st_folium(m, width=1300, height=650)
+            st_folium(m, width=1300, height=620)
             
-            with st.expander("📋 Stansiyalar ma'lumotlar jadvali"):
-                st.dataframe(valid_map_data.head(200))
+            with st.expander("📋 Joylashuvlar va Koordinatalar jadvali"):
+                st.dataframe(valid_points[[c for c in cols if c in valid_points.columns] + ['lat_val', 'lon_val']])
         else:
-            st.warning("Tanlangan ustunlarda to'g'ri raqamli koordinatalar (Latitude / Longitude) topilmadi.")
-    else:
-        st.info("Iltimos, Weigh Station nuqtalari mavjud bo'lgan faylni yuklang.")
+            st.warning("⚠️ Fayldagi joylashuv nomlari (`LOCATION_DESC`) bo'yicha koordinatalar topilmadi.")
 
 # ----------------- 3-BO'LIM: DATA ANALYZER & GEMINI -----------------
 with tab3:
