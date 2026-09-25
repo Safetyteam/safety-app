@@ -163,8 +163,7 @@ with tab2:
                 title = f"{r[name_col]}"
                 if 'LOCATION' in r:
                     title = f"[{r['LOCATION']}] - {title}"
-                
-                count_info = f"<br>Ko'riklar soni: <b>{r[count_col]:,}</b>" if count_col != "Yo'q" else ""
+                count_info = f"<br>Ko'riklar soni: <b>{r[count_col]}</b>" if count_col != "Yo'q" and pd.notna(r[count_col]) else ""
 
                 folium.Marker(
                     location=[lat, lon],
