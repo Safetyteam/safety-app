@@ -5,3 +5,5 @@ pyarrow
 fastparquet
 odfpy
 google-genai
+folium
+streamlit-folium
