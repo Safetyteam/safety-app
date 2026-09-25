@@ -48,11 +48,10 @@ with tab1:
     else:
         st.warning(f"⚠️ `{html_file_path}` fayli topilmadi.")
 
-
 # ----------------- 2-BO'LIM: USA WEIGH STATIONS MAP -----------------
 with tab2:
     st.subheader("⚖️ USA Weigh Stations — Interaktiv Xarita")
-    st.write("Weigh Station yoki ko'riklar faylini yuklang. Agar koordinata bo'lmasa, dastur shahar/stansiya nomidan koordinatalarni avtomatik aniqlaydi.")
+    st.write("Weigh Station yoki ko'riklar faylini yuklang. Dastur kod va shahar nomi orqali rasmiy trassa koordinatalarini avtomatik belgilaydi.")
 
     supported_types = ["csv", "tsv", "xlsx", "xls", "parquet", "json"]
     ws_file = st.file_uploader("Faylni yuklang (CSV, Excel):", type=supported_types, key="ws_uploader")
@@ -81,11 +80,9 @@ with tab2:
     if ws_df is not None and not ws_df.empty:
         cols = ws_df.columns.tolist()
 
-        # 1. Koordinata ustunlarini qidirish
+        # Ustunlarni aniqlash
         lat_candidates = [c for c in cols if any(k in str(c).lower() for k in ['lat', 'latitude', 'y_coord'])]
         lon_candidates = [c for c in cols if any(k in str(c).lower() for k in ['lon', 'lng', 'longitude', 'x_coord'])]
-        
-        # 2. Joylashuv nomi ustunini topish (LOCATION_DESC, LOCATION, CITY, STATION)
         desc_candidates = [c for c in cols if any(k in str(c).lower() for k in ['desc', 'location', 'station', 'city', 'site', 'name'])]
         
         c1, c2 = st.columns(2)
@@ -95,40 +92,40 @@ with tab2:
             count_candidates = [c for c in cols if any(k in str(c).lower() for k in ['soni', 'count', 'total', 'takrorlanish'])]
             count_col = st.selectbox("Ko'riklar soni ustuni (ixtiyoriy):", options=["Yo'q"] + cols, index=cols.index(count_candidates[0])+1 if count_candidates else 0)
 
-      # AQSH (Missouri va qo'shni shtatlar) Weigh Station'larining trassa (I-35, I-70, I-44, I-55) bo'yidagi ANIQ GPS koordinatalari
+        # Aniq trassa (Interstate) Weigh Station koordinatalari
         EXACT_STATIONS = {
-            # EAGLEVILLE (H2, H2S - I-35 Southbound, Welcome Center & Scale)
+            # EAGLEVILLE (H2, H2S - I-35 SB Welcome Center / Weigh Scale)
             ("H2", "EAGLEVILLE MO"): (40.5489, -93.9748),
             ("H2S", "EAGLEVILLE MO"): (40.5489, -93.9748),
             ("H2", ""): (40.5489, -93.9748),
             ("H2S", ""): (40.5489, -93.9748),
 
-            # MAYVIEW (A3, A3E, A3W, A3EAST - I-70 Eastbound / Westbound Scale MM 45)
+            # MAYVIEW (A3, A3E, A3W, A3EAST - I-70 EB / WB Scale MM 45)
             ("A3E", "MAYVIEW MO"): (39.0145, -93.8182),
             ("A3EAST", "MAYVIEW MO"): (39.0145, -93.8182),
             ("A3W", "MAYVIEW MO"): (39.0152, -93.8345),
             ("A3", "MAYVIEW MO"): (39.0148, -93.8260),
 
-            # FORISTELL (C4W - I-70 Westbound Scale MM 206)
+            # FORISTELL (C4W - I-70 WB Scale MM 206)
             ("C4W", "FORISTELL MO"): (38.8285, -90.9332),
 
-            # ST CLAIR (C2E, C2W - I-44 Eastbound / Westbound MM 245)
+            # ST CLAIR (C2E, C2W - I-44 EB / WB MM 245)
             ("C2E", "ST CLAIR MO"): (38.3582, -90.9635),
             ("C2W", "ST CLAIR MO"): (38.3591, -90.9712),
 
-            # JOPLIN (D4E - I-44 Eastbound Scale MM 4)
+            # JOPLIN (D4E - I-44 EB Scale MM 4)
             ("D4E", "JOPLIN MO"): (37.0425, -94.5772),
 
-            # CHARLESTON (E1S - I-57 Southbound MM 13)
+            # CHARLESTON (E1S - I-57 SB MM 13)
             ("E1S", "CHARLESTON MO"): (36.8835, -89.3620),
 
-            # STEELE (E2N - I-55 Northbound MM 4)
+            # STEELE (E2N - I-55 NB MM 4)
             ("E2N", "STEELE MO"): (36.0848, -89.8322),
 
-            # WILLOW SPRINGS (G1W - US 60 / US 63 Junction Scale)
+            # WILLOW SPRINGS (G1W - US 60 / US 63 Junction)
             ("G1W", "WILLOW SPRINGS MO"): (36.9855, -91.9565),
 
-            # STE / ST GENEVIEVE (C5S - I-55 Southbound MM 141)
+            # STE / ST GENEVIEVE (C5S - I-55 SB MM 141)
             ("C5S", "ST GENEVIEVE MO"): (37.9542, -90.0988),
             ("C5S", "STE GENEVIEVE MO"): (37.9542, -90.0988),
 
@@ -144,7 +141,7 @@ with tab2:
             ("BLOOMFIELD", "BLOOMFIELD MO"): (36.8856, -89.9284),
         }
 
-        # Zaxira (faqat shahar nomi bo'yicha stansiya nuqtalari)
+        # Shahar nomiga asoslangan zaxira nuqtalar
         CITY_FALLBACK = {
             "EAGLEVILLE MO": (40.5489, -93.9748),
             "MAYVIEW MO": (39.0148, -93.8260),
@@ -165,53 +162,29 @@ with tab2:
         df_mapped['lat_val'] = None
         df_mapped['lon_val'] = None
 
-        # Aniq koordinatalarni stansiya kodi (LOCATION) va shahar (LOCATION_DESC) bo'yicha belgilash
-        for idx, row in df_mapped.iterrows():
-            loc_code = str(row.get('LOCATION', '')).strip().upper()
-            loc_desc = str(row.get(name_col, '')).strip().upper()
-
-            # 1. Kod + Shahar orqali aniq nuqtani topish
-            if (loc_code, loc_desc) in EXACT_STATIONS:
-                df_mapped.at[idx, 'lat_val'] = EXACT_STATIONS[(loc_code, loc_desc)][0]
-                df_mapped.at[idx, 'lon_val'] = EXACT_STATIONS[(loc_code, loc_desc)][1]
-            elif (loc_code, "") in EXACT_STATIONS:
-                df_mapped.at[idx, 'lat_val'] = EXACT_STATIONS[(loc_code, "")][0]
-                df_mapped.at[idx, 'lon_val'] = EXACT_STATIONS[(loc_code, "")][1]
-            elif loc_desc in CITY_FALLBACK:
-                df_mapped.at[idx, 'lat_val'] = CITY_FALLBACK[loc_desc][0]
-                df_mapped.at[idx, 'lon_val'] = CITY_FALLBACK[loc_desc][1]
-            else:
-                for k, coords in CITY_FALLBACK.items():
-                    if k.split()[0] in loc_desc:
-                        df_mapped.at[idx, 'lat_val'] = coords[0]
-                        df_mapped.at[idx, 'lon_val'] = coords[1]
-                        break
-
-        # Agar asl jadvalda koordinata bo'lmasa, uni nom bo'yicha to'ldirish
-        df_mapped = ws_df.copy()
-        
         has_real_coords = bool(lat_candidates and lon_candidates)
         if has_real_coords:
-            lat_col = lat_candidates[0]
-            lon_col = lon_candidates[0]
-            df_mapped['lat_val'] = pd.to_numeric(df_mapped[lat_col], errors='coerce')
-            df_mapped['lon_val'] = pd.to_numeric(df_mapped[lon_col], errors='coerce')
-        else:
-            df_mapped['lat_val'] = None
-            df_mapped['lon_val'] = None
+            df_mapped['lat_val'] = pd.to_numeric(df_mapped[lat_candidates[0]], errors='coerce')
+            df_mapped['lon_val'] = pd.to_numeric(df_mapped[lon_candidates[0]], errors='coerce')
 
-        # Rasmiy geolokatsiya orqali koordinatalarni ulash
+        # Koordinatalarni avtomatik to'ldirish
         for idx, row in df_mapped.iterrows():
             if pd.isna(row['lat_val']) or pd.isna(row['lon_val']):
-                loc_text = str(row[name_col]).strip().upper()
-                # To'liq mos kelishini tekshirish
-                if loc_text in KNOWN_LOCATIONS:
-                    df_mapped.at[idx, 'lat_val'] = KNOWN_LOCATIONS[loc_text][0]
-                    df_mapped.at[idx, 'lon_val'] = KNOWN_LOCATIONS[loc_text][1]
+                loc_code = str(row.get('LOCATION', '')).strip().upper()
+                loc_desc = str(row.get(name_col, '')).strip().upper()
+
+                if (loc_code, loc_desc) in EXACT_STATIONS:
+                    df_mapped.at[idx, 'lat_val'] = EXACT_STATIONS[(loc_code, loc_desc)][0]
+                    df_mapped.at[idx, 'lon_val'] = EXACT_STATIONS[(loc_code, loc_desc)][1]
+                elif (loc_code, "") in EXACT_STATIONS:
+                    df_mapped.at[idx, 'lat_val'] = EXACT_STATIONS[(loc_code, "")][0]
+                    df_mapped.at[idx, 'lon_val'] = EXACT_STATIONS[(loc_code, "")][1]
+                elif loc_desc in CITY_FALLBACK:
+                    df_mapped.at[idx, 'lat_val'] = CITY_FALLBACK[loc_desc][0]
+                    df_mapped.at[idx, 'lon_val'] = CITY_FALLBACK[loc_desc][1]
                 else:
-                    # Qisman moslik (masalan "MAYVIEW" so'zi qatnashgan bo'lsa)
-                    for k, coords in KNOWN_LOCATIONS.items():
-                        if k.split()[0] in loc_text:
+                    for k, coords in CITY_FALLBACK.items():
+                        if k.split()[0] in loc_desc:
                             df_mapped.at[idx, 'lat_val'] = coords[0]
                             df_mapped.at[idx, 'lon_val'] = coords[1]
                             break
@@ -220,7 +193,6 @@ with tab2:
         st.info(f"📍 Xaritada aks ettirilayotgan stansiyalar soni: **{len(valid_points)}** / {len(ws_df)} ta")
 
         if not valid_points.empty:
-            # Xarita markazini o'rtacha nuqtaga moslash
             avg_lat = valid_points['lat_val'].mean()
             avg_lon = valid_points['lon_val'].mean()
             
@@ -233,6 +205,7 @@ with tab2:
                 title = f"{r[name_col]}"
                 if 'LOCATION' in r:
                     title = f"[{r['LOCATION']}] - {title}"
+                
                 count_info = f"<br>Ko'riklar soni: <b>{r[count_col]}</b>" if count_col != "Yo'q" and pd.notna(r[count_col]) else ""
 
                 folium.Marker(
@@ -247,7 +220,7 @@ with tab2:
             with st.expander("📋 Joylashuvlar va Koordinatalar jadvali"):
                 st.dataframe(valid_points[[c for c in cols if c in valid_points.columns] + ['lat_val', 'lon_val']])
         else:
-            st.warning("⚠️ Fayldagi joylashuv nomlari (`LOCATION_DESC`) bo'yicha koordinatalar topilmadi.")
+            st.warning("⚠️ Fayldagi joylashuv nomlari bo'yicha koordinatalar topilmadi.")
 
 # ----------------- 3-BO'LIM: DATA ANALYZER & GEMINI -----------------
 with tab3:
@@ -290,7 +263,7 @@ with tab3:
         except Exception as e:
             st.error(f"Faylni o'qishda xatolik: {e}")
 
-    df = st.session_state["analysis_data"]
+    df = st.session_state.get("analysis_data")
 
     if df is not None and not df.empty:
         total_rows = len(df)
