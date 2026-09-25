@@ -48,7 +48,7 @@ with tab1:
     else:
         st.warning(f"⚠️ `{html_file_path}` fayli topilmadi.")
 
-# ----------------- 2-BO'LIM: USA WEIGH STATIONS MAP -----------------
+
 # ----------------- 2-BO'LIM: USA WEIGH STATIONS MAP -----------------
 with tab2:
     st.subheader("⚖️ USA Weigh Stations — Interaktiv Xarita")
@@ -95,27 +95,97 @@ with tab2:
             count_candidates = [c for c in cols if any(k in str(c).lower() for k in ['soni', 'count', 'total', 'takrorlanish'])]
             count_col = st.selectbox("Ko'riklar soni ustuni (ixtiyoriy):", options=["Yo'q"] + cols, index=cols.index(count_candidates[0])+1 if count_candidates else 0)
 
-        # AQSH shtatlari va mashhur Weigh Station/shaharlari rasmiy koordinatalar lug'ati
-        KNOWN_LOCATIONS = {
-            "MAYVIEW MO": (39.0142, -93.8341),
-            "JOPLIN MO": (37.0842, -94.5133),
-            "CHARLESTON MO": (36.9206, -89.3331),
-            "STEELE MO": (36.0859, -89.8315),
-            "WILLOW SPRINGS MO": (36.9926, -91.9668),
-            "ST CLAIR MO": (38.3456, -90.9818),
-            "EAGLEVILLE MO": (40.5486, -93.9855),
-            "FORISTELL MO": (38.8239, -90.9579),
-            "ST GENEVIEVE MO": (37.9781, -90.0468),
-            "STE GENEVIEVE MO": (37.9781, -90.0468),
-            "WENTZVILLE MO": (38.8106, -90.8529),
-            "NEOSHO MO": (36.8687, -94.3683),
-            "GRANBY MO": (36.9184, -94.2547),
-            "BOONVILLE MO": (38.9736, -92.7432),
-            "HARRISONVILLE MO": (38.6533, -94.3488),
-            "PLATTSBURG MO": (39.5636, -94.4608),
-            "BLOOMFIELD MO": (36.8856, -89.9284),
-            "CAMERON MO": (39.7408, -94.2377),
+      # AQSH (Missouri va qo'shni shtatlar) Weigh Station'larining trassa (I-35, I-70, I-44, I-55) bo'yidagi ANIQ GPS koordinatalari
+        EXACT_STATIONS = {
+            # EAGLEVILLE (H2, H2S - I-35 Southbound, Welcome Center & Scale)
+            ("H2", "EAGLEVILLE MO"): (40.5489, -93.9748),
+            ("H2S", "EAGLEVILLE MO"): (40.5489, -93.9748),
+            ("H2", ""): (40.5489, -93.9748),
+            ("H2S", ""): (40.5489, -93.9748),
+
+            # MAYVIEW (A3, A3E, A3W, A3EAST - I-70 Eastbound / Westbound Scale MM 45)
+            ("A3E", "MAYVIEW MO"): (39.0145, -93.8182),
+            ("A3EAST", "MAYVIEW MO"): (39.0145, -93.8182),
+            ("A3W", "MAYVIEW MO"): (39.0152, -93.8345),
+            ("A3", "MAYVIEW MO"): (39.0148, -93.8260),
+
+            # FORISTELL (C4W - I-70 Westbound Scale MM 206)
+            ("C4W", "FORISTELL MO"): (38.8285, -90.9332),
+
+            # ST CLAIR (C2E, C2W - I-44 Eastbound / Westbound MM 245)
+            ("C2E", "ST CLAIR MO"): (38.3582, -90.9635),
+            ("C2W", "ST CLAIR MO"): (38.3591, -90.9712),
+
+            # JOPLIN (D4E - I-44 Eastbound Scale MM 4)
+            ("D4E", "JOPLIN MO"): (37.0425, -94.5772),
+
+            # CHARLESTON (E1S - I-57 Southbound MM 13)
+            ("E1S", "CHARLESTON MO"): (36.8835, -89.3620),
+
+            # STEELE (E2N - I-55 Northbound MM 4)
+            ("E2N", "STEELE MO"): (36.0848, -89.8322),
+
+            # WILLOW SPRINGS (G1W - US 60 / US 63 Junction Scale)
+            ("G1W", "WILLOW SPRINGS MO"): (36.9855, -91.9565),
+
+            # STE / ST GENEVIEVE (C5S - I-55 Southbound MM 141)
+            ("C5S", "ST GENEVIEVE MO"): (37.9542, -90.0988),
+            ("C5S", "STE GENEVIEVE MO"): (37.9542, -90.0988),
+
+            # WENTZVILLE (W147 - US 61 / I-70 Scale)
+            ("W147", "WENTZVILLE MO"): (38.8256, -90.8752),
+
+            # NEOSHO & GRANBY (US 71 / I-49 & US 60)
+            ("49 20", "NEOSHO MO"): (36.8322, -94.3755),
+            ("MO 59/", "GRANBY MO"): (36.9184, -94.2547),
+            ("HARRISONVILLE", "HARRISONVILLE MO"): (38.6322, -94.3412),
+            ("CAMERON", "CAMERON MO"): (39.7355, -94.2422),
+            ("BOONVILLE", "BOONVILLE MO"): (38.9482, -92.7485),
+            ("BLOOMFIELD", "BLOOMFIELD MO"): (36.8856, -89.9284),
         }
+
+        # Zaxira (faqat shahar nomi bo'yicha stansiya nuqtalari)
+        CITY_FALLBACK = {
+            "EAGLEVILLE MO": (40.5489, -93.9748),
+            "MAYVIEW MO": (39.0148, -93.8260),
+            "FORISTELL MO": (38.8285, -90.9332),
+            "ST CLAIR MO": (38.3585, -90.9670),
+            "JOPLIN MO": (37.0425, -94.5772),
+            "CHARLESTON MO": (36.8835, -89.3620),
+            "STEELE MO": (36.0848, -89.8322),
+            "WILLOW SPRINGS MO": (36.9855, -91.9565),
+            "ST GENEVIEVE MO": (37.9542, -90.0988),
+            "STE GENEVIEVE MO": (37.9542, -90.0988),
+            "WENTZVILLE MO": (38.8256, -90.8752),
+            "NEOSHO MO": (36.8322, -94.3755),
+            "GRANBY MO": (36.9184, -94.2547),
+        }
+
+        df_mapped = ws_df.copy()
+        df_mapped['lat_val'] = None
+        df_mapped['lon_val'] = None
+
+        # Aniq koordinatalarni stansiya kodi (LOCATION) va shahar (LOCATION_DESC) bo'yicha belgilash
+        for idx, row in df_mapped.iterrows():
+            loc_code = str(row.get('LOCATION', '')).strip().upper()
+            loc_desc = str(row.get(name_col, '')).strip().upper()
+
+            # 1. Kod + Shahar orqali aniq nuqtani topish
+            if (loc_code, loc_desc) in EXACT_STATIONS:
+                df_mapped.at[idx, 'lat_val'] = EXACT_STATIONS[(loc_code, loc_desc)][0]
+                df_mapped.at[idx, 'lon_val'] = EXACT_STATIONS[(loc_code, loc_desc)][1]
+            elif (loc_code, "") in EXACT_STATIONS:
+                df_mapped.at[idx, 'lat_val'] = EXACT_STATIONS[(loc_code, "")][0]
+                df_mapped.at[idx, 'lon_val'] = EXACT_STATIONS[(loc_code, "")][1]
+            elif loc_desc in CITY_FALLBACK:
+                df_mapped.at[idx, 'lat_val'] = CITY_FALLBACK[loc_desc][0]
+                df_mapped.at[idx, 'lon_val'] = CITY_FALLBACK[loc_desc][1]
+            else:
+                for k, coords in CITY_FALLBACK.items():
+                    if k.split()[0] in loc_desc:
+                        df_mapped.at[idx, 'lat_val'] = coords[0]
+                        df_mapped.at[idx, 'lon_val'] = coords[1]
+                        break
 
         # Agar asl jadvalda koordinata bo'lmasa, uni nom bo'yicha to'ldirish
         df_mapped = ws_df.copy()
