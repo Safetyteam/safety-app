@@ -306,69 +306,79 @@ with tab3:
                     default=[]
                 )
 
-            # Tanlangan Police ID lar bo'yicha butun bazani filtrlash
-            if manual_id:
-                working_df = working_df[working_df['POLICE_ID (Bosh 5)'].str.startswith(manual_id)]
-                st.info(f"Police ID `{manual_id}` bo'yicha **{len(working_df):,}** ta yozuv topildi.")
-            elif selected_police_labels:
-                selected_ids = [label.split(" ")[0].strip() for label in selected_police_labels]
-                working_df = working_df[working_df['POLICE_ID (Bosh 5)'].isin(selected_ids)]
-                st.info(f"Tanlangan Police ID'lar bo'yicha jami **{len(working_df):,}** ta yozuv saralandi.")
-        else:
-            st.warning("⚠️ Jadvalda `REPORT_NUMBER` nomli ustun topilmadi.")
+            # ----------------- POLICE ID BO'YICHA YAGONA TAHLIL VA FILTR -----------------
+report_col = next((c for c in df.columns if any(k in str(c).upper() for k in ['REPORT_NUM', 'REPORT_NUMBER', 'REPORTNO'])), None)
+loc_col = next((c for c in df.columns if any(k in str(c).upper() for k in ['LOCATION_DESC', 'LOCATION', 'DESC'])), None)
+road_col = next((c for c in df.columns if 'ROAD' in str(c).upper()), None)
 
-        st.markdown("---")
-        st.write(f"### 📋 Tahlil qilinayotgan ma'lumotlar bazasi ({len(working_df):,} ta qator)")
-        st.dataframe(working_df.head(20), use_container_width=True)
+if report_col:
+    # 1. Boshidagi 5 ta raqamni Police ID qilib ajratamiz
+    df['POLICE_ID'] = df[report_col].astype(str).str.strip().str[:5]
 
-        # 2. Bog'liqliklar uchun ustunlarni belgilash
-        st.write("### 📌 Bog'liqliklar va Qoliplarni aniqlash ustunlari")
-        all_cols = working_df.columns.tolist()
+    st.subheader("👮 Police ID bo'yicha Umumlashtirilgan Tahlil")
 
-        # Dastlabki ustunlarni avtomatik belgilash
-        default_cols = [c for c in ['ROAD', 'LOCATION_DESC', 'COUNTY_CODE_STATE', 'COUNTY_CODE', 'POLICE_ID (Bosh 5)', report_col] if c and c in all_cols]
+    # 2. Har bir Police ID bo'yicha jami inspectionlar sonini hisoblash
+    police_summary = df.groupby('POLICE_ID').agg(
+        Jami_Inspection_Soni=(report_col, 'count'),
+        Noyob_Joylar_Soni=(loc_col, lambda x: x.nunique() if loc_col else 1),
+        Joylashuvlar_Taqsimoti=(loc_col, lambda x: ", ".join([f"{loc}: {cnt} ta" for loc, cnt in x.value_counts().items()]) if loc_col else "")
+    ).reset_index()
 
-        selected_columns = st.multiselect(
-            "Qoliplarni aniqlash ustunlarini tanlang:",
-            options=all_cols,
-            default=default_cols
-        )
+    # Ko'p tekshiruv qilgan ofitserlarni yuqoriga qo'yish
+    police_summary = police_summary.sort_values(by='Jami_Inspection_Soni', ascending=False)
 
-        if len(selected_columns) >= 2:
-            # NO LIMIT: Barcha kiritilgan ma'lumotlar asosida to'liq guruhlash va saralash
-            with st.spinner("Barcha qatorlar bo'yicha noyob qoliplar chiqarilmoqda..."):
-                patterns = (
-                    working_df
-                    .groupby(selected_columns, dropna=False)
-                    .size()
-                    .reset_index(name='Takrorlanish_soni')
-                )
-                patterns = patterns.sort_values(by='Takrorlanish_soni', ascending=False)
+    # 3. Police ID bo'yicha filtr
+    c_p1, c_p2 = st.columns([1, 2])
+    with c_p1:
+        search_police = st.text_input("🔍 Police ID qidirish (5 ta raqam):", placeholder="Masalan: 66540")
+    with c_p2:
+        top_police_options = [
+            f"{row['POLICE_ID']}  —  ({row['Jami_Inspection_Soni']} ta inspection, {row['Noyob_Joylar_Soni']} ta joyda)"
+            for _, row in police_summary.iterrows()
+        ]
+        selected_police = st.multiselect("Yoki ro'yxatdan tanlang:", options=top_police_options)
 
-            st.write(f"### 🎯 Ajratib olingan noyob qoliplar ({len(patterns):,} ta pattern)")
-            st.dataframe(patterns, use_container_width=True)
+    # Filtrlash mantiqi
+    filtered_police_ids = []
+    if search_police:
+        filtered_police_ids = police_summary[police_summary['POLICE_ID'].str.startswith(search_police)]['POLICE_ID'].tolist()
+    elif selected_police:
+        filtered_police_ids = [s.split(" ")[0].strip() for s in selected_police]
 
-            # Excel va CSV ga yuklab olish
-            col_d1, col_d2 = st.columns(2)
-            with col_d1:
-                st.download_button(
-                    label="📥 Natijalarni CSV formatida yuklab olish",
-                    data=patterns.to_csv(index=False).encode('utf-8'),
-                    file_name="police_patterns_unlimited.csv",
-                    mime="text/csv"
-                )
-            with col_d2:
-                import io
-                out = io.BytesIO()
-                with pd.ExcelWriter(out, engine='openpyxl') as wr:
-                    patterns.to_excel(wr, index=False, sheet_name='Patterns')
-                st.download_button(
-                    label="📥 Natijalarni Excel (.xlsx) formatida yuklab olish",
-                    data=out.getvalue(),
-                    file_name="police_patterns_unlimited.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+    # Agar filtr tanlansa, umumiy jadvalni qisqartiramiz
+    if filtered_police_ids:
+        display_summary = police_summary[police_summary['POLICE_ID'].isin(filtered_police_ids)]
+        detailed_records = df[df['POLICE_ID'].isin(filtered_police_ids)]
+    else:
+        display_summary = police_summary
+        detailed_records = df
 
+    # 4. Asosiy yagona Police ID jadvali (Hech qanday takrorlarsiz!)
+    st.write(f"### 📋 Noyob Ofitserlar (Police ID) ro'yxati: {len(display_summary):,} nafar")
+    st.dataframe(
+        display_summary,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # 5. Tanlangan politsiyachilarning to'liq tafsilotlari (Har bir report raqami va joyi)
+    with st.expander("🔎 Ushbu Police ID'larga tegishli to'liq inspectionlar va Report raqamlari"):
+        show_cols = [c for c in ['POLICE_ID', report_col, loc_col, road_col, 'COUNTY_CODE_STATE', 'COUNTY_CODE'] if c and c in detailed_records.columns]
+        st.dataframe(detailed_records[show_cols], use_container_width=True)
+
+    # 6. Natijalarni Excelga yuklab olish
+    import io
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        display_summary.to_excel(writer, index=False, sheet_name='Police_Summary')
+        detailed_records.to_excel(writer, index=False, sheet_name='All_Inspection_Details')
+    
+    st.download_button(
+        label="📥 Ushbu hisobotni Excel formatida yuklab olish",
+        data=output.getvalue(),
+        file_name="Police_Inspection_Summary.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
             # Gemini AI tahlili
             if st.button("🤖 Gemini orqali mantiqiy qoidalarni chiqarish"):
                 if not api_key:
