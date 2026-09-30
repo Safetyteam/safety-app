@@ -367,42 +367,38 @@ if report_col:
         st.dataframe(detailed_records[show_cols], use_container_width=True)
 
     # 6. Natijalarni Excelga yuklab olish
-    import io
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        display_summary.to_excel(writer, index=False, sheet_name='Police_Summary')
-        detailed_records.to_excel(writer, index=False, sheet_name='All_Inspection_Details')
-    
-    st.download_button(
-        label="📥 Ushbu hisobotni Excel formatida yuklab olish",
-        data=output.getvalue(),
-        file_name="Police_Inspection_Summary.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-            # Gemini AI tahlili
-            if st.button("🤖 Gemini orqali mantiqiy qoidalarni chiqarish"):
-                if not api_key:
-                    st.error("Iltimos, chap tarafdagi maydonga Gemini API kalitingizni kiriting!")
-                else:
-                    client = genai.Client(api_key=api_key)
-                    sample_data = patterns.head(50).to_string(index=False)
-                    prompt = f"""
-                    Quyidagi transport tekshiruvi (Police inspection patterns) qonuniyatlarini tahlil qil.
-                    Ustunlar: {', '.join(selected_columns)}
-                    
-                    Qaysi Police ID qaysi yo'llar (ROAD), joylashuvlar (LOCATION_DESC) va okruglarga (COUNTY_CODE) birikkanini aniqla va qat'iy mantiqiy qoidalar ro'yxatini chiqarib ber:
-                    Format:
-                    IF POLICE_ID=... AND ROAD=... THEN LOCATION_DESC=... (COUNTY_CODE=...)
-                    
-                    Ma'lumotlar namunasi:
-                    {sample_data}
-                    """
-                    with st.spinner("Gemini tahlil qilmoqda..."):
-                        response = client.models.generate_content(
-                            model="gemini-2.5-flash",
-                            contents=prompt,
-                        )
-                        st.write("### 🧠 Aniqlangan mantiqiy qoidalar:")
-                        st.markdown(response.text)
-        else:
-            st.warning("Iltimos, guruhlash uchun kamida 2 ta ustunni tanlang.")
+        import io
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            display_summary.to_excel(writer, index=False, sheet_name='Police_Summary')
+            detailed_records.to_excel(writer, index=False, sheet_name='All_Inspection_Details')
+
+        st.download_button(
+            label="📥 Ushbu hisobotni Excel formatida yuklab olish",
+            data=output.getvalue(),
+            file_name="Police_Inspection_Summary.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # Gemini AI tahlili
+        if st.button("🤖 Gemini orqali mantiqiy qoidalarni chiqarish"):
+            if not api_key:
+                st.error("Iltimos, chap tarafdagi maydonga Gemini API kalitingizni kiriting!")
+            else:
+                client = genai.Client(api_key=api_key)
+                sample_data = display_summary.head(50).to_string(index=False)
+                prompt = f"""
+                Quyidagi transport tekshiruvi (Police inspection patterns) qonuniyatlarini tahlil qil.
+                
+                Qaysi Police ID qaysi joylashuvlarda ko'proq inspection o'tkazganini aniqla va qat'iy xulosa chiqar:
+                
+                Ma'lumotlar namunasi:
+                {sample_data}
+                """
+                with st.spinner("Gemini tahlil qilmoqda..."):
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt,
+                    )
+                    st.write("### 🧠 Aniqlangan mantiqiy qoidalar:")
+                    st.markdown(response.text)
