@@ -222,10 +222,10 @@ with tab2:
         else:
             st.warning("⚠️ Fayldagi joylashuv nomlari bo'yicha koordinatalar topilmadi.")
 
-# ----------------- 3-BO'LIM: DATA ANALYZER & GEMINI -----------------
+# ----------------- 3-BO'LIM: DATA ANALYZER & GEMINI (LIMITSIZ & POLICE ID ANALYZER) -----------------
 with tab3:
-    st.subheader("📊 Data Analyzer & AI Rule Finder (Saralash va Qoliplar)")
-    
+    st.subheader("📊 Data Analyzer & Police Report ID Tahlili (Cheklovlarsiz)")
+
     supported_types = [
         "csv", "tsv", "txt", "tab",
         "xlsx", "xls", "xlsm", "xlsb", "ods",
@@ -233,17 +233,17 @@ with tab3:
         "json", "jsonl", "ndjson",
         "gz", "zip"
     ]
-    
+
     analysis_file = st.file_uploader(
-        "Tahlil qilinadigan faylni yuklang (CSV, Excel, Parquet, JSON, TSV...):", 
+        "Tahlil qilinadigan faylni yuklang (CSV, Excel, Parquet...):", 
         type=supported_types,
-        key="analysis_uploader"
+        key="analysis_uploader_unlimited"
     )
 
     if analysis_file:
         file_name = analysis_file.name.lower()
         try:
-            with st.spinner("Tahlil ma'lumotlari o'qilmoqda..."):
+            with st.spinner("Barcha ma'lumotlar to'liq o'qilmoqda..."):
                 if any(file_name.endswith(ext) for ext in ['.csv', '.txt', '.gz', '.zip']):
                     st.session_state["analysis_data"] = pd.read_csv(analysis_file, low_memory=False)
                 elif any(file_name.endswith(ext) for ext in ['.tsv', '.tab']):
@@ -258,7 +258,7 @@ with tab3:
                     st.session_state["analysis_data"] = pd.read_json(analysis_file)
                 elif any(file_name.endswith(ext) for ext in ['.xlsx', '.xls', '.xlsm', '.xlsb', '.ods']):
                     xls = pd.ExcelFile(analysis_file)
-                    selected_sheet = st.selectbox("Kerakli varaqni tanlang:", xls.sheet_names, key="analysis_sheet")
+                    selected_sheet = st.selectbox("Kerakli varaqni tanlang:", xls.sheet_names, key="analysis_sheet_unl")
                     st.session_state["analysis_data"] = pd.read_excel(analysis_file, sheet_name=selected_sheet)
         except Exception as e:
             st.error(f"Faylni o'qishda xatolik: {e}")
@@ -267,65 +267,124 @@ with tab3:
 
     if df is not None and not df.empty:
         total_rows = len(df)
-        st.success(f"Ma'lumotlar saqlandi! Qatorlar: {total_rows:,} ta | Ustunlar: {len(df.columns)} ta")
+        st.success(f"✅ Fayl 100% to'liq yuklandi! Jami qatorlar soni: **{total_rows:,}** ta (Hech qanday limitsiz ishlamoqda)")
 
-        st.write("### 1. Ma'lumotlarni saralash va filtrlash")
-        all_columns = df.columns.tolist()
+        # 1. REPORT_NUMBER ustunini topish va Police ID ustunini yasash
+        report_col = next((c for c in df.columns if any(k in str(c).upper() for k in ['REPORT_NUM', 'REPORT_NUMBER', 'REPORTNO', 'REPORT_NO'])), None)
 
-        filter_col = st.selectbox("Saralash uchun ustunni tanlang (Masalan: State, Level, Violation Code):", ["Hech qaysi"] + all_columns)
-        filtered_df = df
-        if filter_col != "Hech qaysi":
-            unique_vals = df[filter_col].dropna().unique().tolist()
-            selected_val = st.multiselect(f"{filter_col} bo'yicha qiymatlarni tanlang:", options=unique_vals, default=unique_vals[:5] if len(unique_vals) > 5 else unique_vals)
-            filtered_df = df[df[filter_col].isin(selected_val)]
+        working_df = df.copy()
 
-        st.dataframe(filtered_df.head(10))
+        if report_col:
+            # Dastlabki 5 raqamni Police ID qilib ajratish
+            working_df['POLICE_ID (Bosh 5)'] = working_df[report_col].astype(str).str.strip().str[:5]
+            # 5 tadan keyingi qolgan qismi
+            working_df['REPORT_REST'] = working_df[report_col].astype(str).str.strip().str[5:]
 
-        st.write("### 2. Tahlil doirasi (Range va Cheklov)")
-        col_r1, col_r2 = st.columns([1, 2])
-        with col_r1:
-            analyze_all = st.checkbox("Barcha saralangan qatorlarni tahlil qilish", value=(len(filtered_df) <= 100000))
-        with col_r2:
-            sample_limit = st.slider(
-                "Tahlil qilinadigan qatorlar chegarasi (Limit):", 
-                min_value=1000, 
-                max_value=max(len(filtered_df), 1000), 
-                value=min(len(filtered_df), 50000),
-                step=1000,
-                disabled=analyze_all
+            st.write("### 🔍 Police ID (Boshidagi 5 raqam) bo'yicha saralash va filtr")
+
+            # Police ID larning umumiy takrorlanishlar sonini hisoblash
+            police_counts = (
+                working_df['POLICE_ID (Bosh 5)']
+                .value_counts()
+                .reset_index()
             )
+            police_counts.columns = ['POLICE_ID', 'Jami_takrorlar_soni']
 
-        analysis_df = filtered_df if analyze_all else filtered_df.head(sample_limit)
-        st.caption(f"Tanlangan tahlil hajmi: **{len(analysis_df):,}** ta qator")
+            c_f1, c_f2 = st.columns([1, 2])
+            with c_f1:
+                manual_id = st.text_input("Police ID (5 ta raqam) qo'lda qidirish:", placeholder="Masalan: 70350")
+            
+            with c_f2:
+                # Variantlar ko'rinishi: "70350 (2,450 ta report)"
+                police_options = [
+                    f"{row['POLICE_ID']}  —  ({row['Jami_takrorlar_soni']:,} ta report)"
+                    for _, row in police_counts.iterrows()
+                ]
+                selected_police_labels = st.multiselect(
+                    "Yoki eng ko'p uchragan Police ID'lardan tanlang (takrorlanish soni bilan):",
+                    options=police_options,
+                    default=[]
+                )
 
-        st.write("### 3. Bog'liqliklar uchun ustunlarni belgilash")
+            # Tanlangan Police ID lar bo'yicha butun bazani filtrlash
+            if manual_id:
+                working_df = working_df[working_df['POLICE_ID (Bosh 5)'].str.startswith(manual_id)]
+                st.info(f"Police ID `{manual_id}` bo'yicha **{len(working_df):,}** ta yozuv topildi.")
+            elif selected_police_labels:
+                selected_ids = [label.split(" ")[0].strip() for label in selected_police_labels]
+                working_df = working_df[working_df['POLICE_ID (Bosh 5)'].isin(selected_ids)]
+                st.info(f"Tanlangan Police ID'lar bo'yicha jami **{len(working_df):,}** ta yozuv saralandi.")
+        else:
+            st.warning("⚠️ Jadvalda `REPORT_NUMBER` nomli ustun topilmadi.")
+
+        st.markdown("---")
+        st.write(f"### 📋 Tahlil qilinayotgan ma'lumotlar bazasi ({len(working_df):,} ta qator)")
+        st.dataframe(working_df.head(20), use_container_width=True)
+
+        # 2. Bog'liqliklar uchun ustunlarni belgilash
+        st.write("### 📌 Bog'liqliklar va Qoliplarni aniqlash ustunlari")
+        all_cols = working_df.columns.tolist()
+
+        # Dastlabki ustunlarni avtomatik belgilash
+        default_cols = [c for c in ['ROAD', 'LOCATION_DESC', 'COUNTY_CODE_STATE', 'COUNTY_CODE', 'POLICE_ID (Bosh 5)', report_col] if c and c in all_cols]
+
         selected_columns = st.multiselect(
-            "Qoliplarni aniqlash ustunlari (Masalan: County, Location, Facility, Address):",
-            options=all_columns,
-            default=[col for col in all_columns if any(k in str(col).lower() for k in ['county', 'location', 'facil', 'address', 'site', 'hwy', 'road', 'violation'])][:4]
+            "Qoliplarni aniqlash ustunlarini tanlang:",
+            options=all_cols,
+            default=default_cols
         )
 
         if len(selected_columns) >= 2:
-            patterns = analysis_df.groupby(selected_columns, dropna=False).size().reset_index(name='Takrorlanish_soni')
-            patterns = patterns.sort_values(by='Takrorlanish_soni', ascending=False)
-            
-            st.write(f"### 4. Ajratib olingan noyob qoliplar ({len(patterns):,} ta pattern)")
-            st.dataframe(patterns.head(100))
+            # NO LIMIT: Barcha kiritilgan ma'lumotlar asosida to'liq guruhlash va saralash
+            with st.spinner("Barcha qatorlar bo'yicha noyob qoliplar chiqarilmoqda..."):
+                patterns = (
+                    working_df
+                    .groupby(selected_columns, dropna=False)
+                    .size()
+                    .reset_index(name='Takrorlanish_soni')
+                )
+                patterns = patterns.sort_values(by='Takrorlanish_soni', ascending=False)
 
-            if st.button("🤖 Gemini orqali qoidalarni aniqlash"):
+            st.write(f"### 🎯 Ajratib olingan noyob qoliplar ({len(patterns):,} ta pattern)")
+            st.dataframe(patterns, use_container_width=True)
+
+            # Excel va CSV ga yuklab olish
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                st.download_button(
+                    label="📥 Natijalarni CSV formatida yuklab olish",
+                    data=patterns.to_csv(index=False).encode('utf-8'),
+                    file_name="police_patterns_unlimited.csv",
+                    mime="text/csv"
+                )
+            with col_d2:
+                import io
+                out = io.BytesIO()
+                with pd.ExcelWriter(out, engine='openpyxl') as wr:
+                    patterns.to_excel(wr, index=False, sheet_name='Patterns')
+                st.download_button(
+                    label="📥 Natijalarni Excel (.xlsx) formatida yuklab olish",
+                    data=out.getvalue(),
+                    file_name="police_patterns_unlimited.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+            # Gemini AI tahlili
+            if st.button("🤖 Gemini orqali mantiqiy qoidalarni chiqarish"):
                 if not api_key:
                     st.error("Iltimos, chap tarafdagi maydonga Gemini API kalitingizni kiriting!")
                 else:
                     client = genai.Client(api_key=api_key)
                     sample_data = patterns.head(50).to_string(index=False)
                     prompt = f"""
-                    Quyidagi xavfsizlik (Safety / Vehicle Inspection) ma'lumotlaridagi qonuniyatlarni chuqur tahlil qil.
+                    Quyidagi transport tekshiruvi (Police inspection patterns) qonuniyatlarini tahlil qil.
                     Ustunlar: {', '.join(selected_columns)}
                     
-                    Qat'iy mantiqiy qoidalar ro'yxatini tuz:
-                    IF {selected_columns[0]}=... AND {selected_columns[1]}=... THEN ...
+                    Qaysi Police ID qaysi yo'llar (ROAD), joylashuvlar (LOCATION_DESC) va okruglarga (COUNTY_CODE) birikkanini aniqla va qat'iy mantiqiy qoidalar ro'yxatini chiqarib ber:
+                    Format:
+                    IF POLICE_ID=... AND ROAD=... THEN LOCATION_DESC=... (COUNTY_CODE=...)
                     
-                    Qoliplar namunasi:
+                    Ma'lumotlar namunasi:
                     {sample_data}
                     """
                     with st.spinner("Gemini tahlil qilmoqda..."):
@@ -333,9 +392,7 @@ with tab3:
                             model="gemini-2.5-flash",
                             contents=prompt,
                         )
-                        st.write("### 5. Aniqlangan mantiqiy qoidalar:")
+                        st.write("### 🧠 Aniqlangan mantiqiy qoidalar:")
                         st.markdown(response.text)
         else:
-            st.warning("Iltimos, kamida 2 ta ustunni tanlang.")
-    else:
-        st.info("Saralash va tahlil qilish uchun fayl yuklang.")
+            st.warning("Iltimos, guruhlash uchun kamida 2 ta ustunni tanlang.")
